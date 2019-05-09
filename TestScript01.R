@@ -93,13 +93,15 @@ dna <- SearchDB(dbConn,
 f_primer <- DNAStringSet(primers$forward_primer[PSET])
 r_primer <- DNAStringSet(primers$reverse_primer[PSET])
 
-#something about
+#sets up so you can look at your sequences in a window
 patterns <- c(f_primer,
               reverseComplement(r_primer))
+#Look at your sequence in safari/browser
+#Pink is F primer region, blue is reverse primer region
 BrowseSeqs(dna,
            patterns=patterns)
 
-#Other stuff
+#Code which makes a 5-mer profile distance phylogenetic tree thing showing how the sequences are related
 PSET <- which.max(primers$score)
 f_primer <- DNAString(primers$forward_primer[PSET])
 r_primer <- DNAString(primers$reverse_primer[PSET])
