@@ -98,3 +98,72 @@ patterns <- c(f_primer,
               reverseComplement(r_primer))
 BrowseSeqs(dna,
            patterns=patterns)
+
+#Other stuff
+PSET <- which.max(primers$score)
+f_primer <- DNAString(primers$forward_primer[PSET])
+r_primer <- DNAString(primers$reverse_primer[PSET])
+r_primer <- reverseComplement(r_primer)
+ids <- dbGetQuery(dbConn, "select distinct identifier from Seqs")
+ids <- ids$identifier
+if (TYPE=="sequence") {
+  signatures <- matrix(0, nrow=4^RESOLUTION, ncol=length(ids))
+} else if (TYPE=="melt") {
+  signatures <- matrix(0, nrow=length(RESOLUTION), ncol=length(ids))
+} else { # TYPE=="length"
+  signatures <- matrix(0, nrow=length(RESOLUTION) - 1, ncol=length(ids))
+}
+colnames(signatures) <- abbreviate(ids, 15)
+
+for (i in seq_along(ids)) {
+  dna <- SearchDB(dbConn, identifier=ids[i], remove="all", verbose=FALSE)
+  amplicons <- matchLRPatterns(f_primer, r_primer,
+                               MAX_SIZE, unlist(dna),
+                               max.Lmismatch=2, max.Rmismatch=2,
+                               Lfixed="subject", Rfixed="subject")
+  amplicons <- as(amplicons, "DNAStringSet")
+  if (length(amplicons)==0)
+    next
+  if (TYPE=="sequence") {
+    signature <- oligonucleotideFrequency(amplicons, RESOLUTION)
+    signatures[, i] <- colMeans(signature)
+  } else if (TYPE=="melt") {
+    signature <- MeltDNA(amplicons, "melt curves", RESOLUTION)
+    # weight melting curves by their amlicon's width
+    signature <- t(signature)*width(amplicons)
+    signatures[, i] <- colSums(signature)/sum(width(amplicons))
+  } else { # TYPE=="length"
+    signature <- .bincode(width(amplicons), RESOLUTION)
+    for (j in signature[which(!is.na(signature))])
+      signatures[j, i] <- signatures[j, i] + 1/length(signature)
+  }
+}
+
+if (TYPE=="sequence") {
+  d <- dist(t(signatures), "minkowski", p=1) # L1-Norm
+  IdClusters(as.matrix(d), showPlot=T, verbose=FALSE)
+  mtext(paste(RESOLUTION, "-mer Profile Distance", sep=""),
+        side=2, padj=-4)
+} else if (TYPE=="melt") {
+  matplot(RESOLUTION, signatures, type="l",
+          xlab="Temperature (degrees Celsius)", ylab="Average Helicity")
+} else { # TYPE=="length"
+  if (length(ids) > 20) {
+    plot(NA,xlim=c(0.5, length(ids) + 0.5), ylim=range(RESOLUTION),
+         xlab="Group Index", ylab="Amplicon Length",
+         yaxs="i", xaxs="i")
+    axis(1, at=1:length(ids), labels=FALSE, tck=-0.01)
+  } else {
+    plot(NA,
+         xlim=c(0.5, length(ids) + 0.5), ylim=range(RESOLUTION),
+         xlab="", ylab="Amplicon Length",
+         yaxs="i", xaxs="i", xaxt="n")
+    axis(1, at=1:length(ids), labels=abbreviate(ids, 7), las=2)
+  }
+  xaxs <- RESOLUTION[-1] - diff(RESOLUTION)/2 # average lengths
+  for (i in seq_along(ids)) {
+    w <- which(signatures[, i] > 0)
+    if (length(w) > 0)
+      segments(i - 0.45, xaxs[w], i + 0.45, xaxs[w], lwd=2)
+  }
+}
